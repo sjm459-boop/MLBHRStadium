@@ -1,0 +1,271 @@
+---
+title: "SamanthaMcKinneyMLBHRTry"
+output: html_document
+date: "2026-02-19"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+install.packages(c("shiny", "leaflet", "dplyr", "tidyverse"))
+library(tidyverse)
+library(rvest)
+library(dplyr)
+library(stringr)
+library(leaflet)
+library(tidygeocoder)
+library(ggplot2)
+library(sf)
+```
+
+```{r}
+mlb_team_location <- "https://en.wikipedia.org/wiki/List_of_current_Major_League_Baseball_stadiums"
+team_location <- mlb_team_location |>
+  read_html() |>
+  html_table()
+```
+
+
+```{r}
+team_location_df <- as.data.frame(team_location[[1]])[, c(4,6)] 
+team_location_df <- team_location_df |>
+  rename(Location = colnames(team_location_df)[1], 
+         Team = colnames(team_location_df)[2]) |> 
+  mutate(Team = str_remove_all(as.character(Team), "\\[nb ?\\d+\\]")) |>
+mutate(Team = ifelse(Team == "Athletics", "Oakland Athletics", Team))
+print(team_location_df)
+```
+
+```{r}
+mlb_data_clean <- team_location_df |> 
+  geocode(Location, method = "osm", lat = lat, long = lon)
+mlb_data_clean <- mlb_data_clean |> drop_na(lat, lon)
+mlb_data_clean <- mlb_data_clean |>
+  st_as_sf(coords = c("lon", "lat"), crs = 4326, remove = FALSE)
+
+```
+
+```{r}
+mlb_data_clean_csv <- mlb_data_clean |> 
+  st_drop_geometry()
+write.csv(mlb_data_clean_csv, "mlb_data_clean.csv", row.names = FALSE)
+read.csv("mlb_data_clean.csv")
+```
+
+```{r}
+mlb_data_clean$stadium_photo <- c(
+  "MWstadium.jpg",
+  "LAAstadium.jpg",
+  "SLLstadium.jpg",
+  "ADstadium.jpg",
+  "nymstadium.jpeg",
+  "PHPstadium.jpg",
+  "DTstadium.jpg",
+  "CRstadium.jpg",
+  "HAstadium.jpg",
+  "LADstadium.jpg",
+  "BRSstadium.jpg",
+  "TXRstadium.jpg",
+  "CIRstadium.jpg",
+  "KCRstadium.jpg",
+  "MMstadium.jpg",
+  "WNstadium.jpg",
+  "SFGstadium.jpg",
+  "BOstadium.jpg",
+  "SDPstadium.jpg",
+  "PPstadium.jpg",
+  "CGstadium.jpg",
+  "CWSstadium.jpg",
+  "TBJstadium.jpg",
+  "OAstadium.jpg",
+  "SMstadium.jpg",
+  "MTstadium.jpg",
+  "TBRstadium.jpg",
+  "ABstadium.jpg",
+  "CHCstadium.jpg",
+  "NYYstadium.jpg"
+)
+```
+
+```{r}
+mlb_data_clean$stadium_photo <- paste0(
+  "https://raw.githubusercontent.com/sjm459-boop/stadiums/main/",
+  basename(mlb_data_clean$stadium_photo)
+)
+```
+
+
+```{r}
+library(tibble)
+
+X2025HRdata <- tribble(
+  ~Team,                   ~Venue,                         ~Year,       ~HR,
+  "Colorado Rockies",      "Coors Field",                  "2023-2025", 106,
+  "Boston Red Sox",        "Fenway Park",                  "2023-2025", 89,
+  "Arizona Diamondbacks",  "Chase Field",                  "2023-2025", 88,
+  "Cincinnati Reds",       "Great American Ball Park",     "2023-2025", 123,
+  "Minnesota Twins",       "Target Field",                 "2023-2025", 102,
+  "Kansas City Royals",    "Kauffman Stadium",             "2023-2025", 85,
+  "Miami Marlins",         "loanDepot park",               "2023-2025", 90,     # FIXED
+  "Philadelphia Phillies", "Citizens Bank Park",           "2023-2025", 114,    # FIXED
+  "Washington Nationals",  "Nationals Park",               "2023-2025", 94,
+  "Los Angeles Dodgers",   "Dodger Stadium",               "2023-2025", 127,    # FIXED
+  "Los Angeles Angels",    "Angel Stadium",                "2023-2025", 113,    # FIXED
+  "Atlanta Braves",        "Truist Park",                  "2023-2025", 104,
+  "Baltimore Orioles",     "Oriole Park at Camden Yards",  "2023-2025", 105,
+  "Detroit Tigers",        "Comerica Park",                "2023-2025", 99,
+  "St. Louis Cardinals",   "Busch Stadium",                "2023-2025", 87,
+  "Houston Astros",        "Daikin Park",                  "2023-2025", 105,
+  "Toronto Blue Jays",     "Rogers Centre",                "2023-2025", 104,
+  "New York Yankees",      "Yankee Stadium",               "2023-2025", 119,
+  "Chicago White Sox",     "Rate Field",                   "2023-2025", 96,
+  "Pittsburgh Pirates",    "PNC Park",                     "2023-2025", 76,
+  "New York Mets",         "Citi Field",                   "2023-2025", 104,
+  "Milwaukee Brewers",     "American Family Field",        "2023-2025", 106,
+  "San Francisco Giants",  "Oracle Park",                  "2023-2025", 82,
+  "Cleveland Guardians",   "Progressive Field",            "2023-2025", 85,     # FIXED
+  "San Diego Padres",      "Petco Park",                   "2023-2025", 102,
+  "Texas Rangers",         "Globe Life Field",             "2023-2025", 104,
+  "Chicago Cubs",          "Wrigley Field",                "2023-2025", 99,
+  "Seattle Mariners",      "T-Mobile Park",                "2023-2025", 93
+)
+
+```
+
+```{r}
+mlb_data_clean <- mlb_data_clean |>
+  left_join(X2025HRdata, by = "Team")
+```
+
+```{r}
+options(viewer = NULL)
+
+leaflet(mlb_data_clean) |> 
+  addProviderTiles("CartoDB.Positron") |>
+  addCircleMarkers( 
+    popup = ~ paste0( 
+      "<b>", Team, "</b><br>",
+      str_extract(Location, '^([^,]*)'), "<br>", 
+      "<img src='", stadium_photo, "' width='200'>" ),
+    stroke = FALSE, 
+    fillOpacity = 0.75,
+    color = ~ colorNumeric("viridis", mlb_data_clean$HR)(HR) ) |>
+  addLegend(
+    "bottomright",
+    pal = colorNumeric("viridis", mlb_data_clean$HR), 
+    values = ~ HR, 
+    title = "Home Runs (2023–2025)", opacity = 0.75 ) |> 
+  setView(-98.35, 38.00, zoom = 3)
+```
+Note here that the Athletics and Rays are not counted as they did not play in their home stadium during the 2025 season. 
+```{r}
+bat2025 <- read_csv("bat2025.csv")
+```
+
+```{r}
+bat2025 <- bat2025|>
+  select(Tm,HR)
+bat2025 <- bat2025 |> 
+  mutate( Tm = case_when( 
+    Tm == "athletics" ~ "Oakland Athletics",
+    Tm == "Athletics" ~ "Oakland Athletics", 
+    TRUE ~ Tm ) 
+    )
+```
+
+```{r}
+compare <- bat2025 |>
+  rename(Team = Tm, TeamHR = HR) |>
+  inner_join(
+    X2025HRdata |> rename(StadiumHR = HR),
+    by = "Team"
+  ) |>
+  pivot_longer(
+    cols = c(TeamHR, StadiumHR),
+    names_to = "Source",
+    values_to = "HR"
+  )
+```
+
+```{r}
+ggplot(compare, aes(x = Team, y = HR, fill = Source)) +
+  geom_col(position = "dodge") +
+  coord_flip() +
+  labs(
+    title = "Team vs Stadium Home Runs (2025)",
+    x = "Team",
+    y = "Home Runs", 
+    fill = "Source" ) +
+  theme_minimal()
+```
+Just noting that about half of the team home runs come from the stadium home runs. While this can vary from team to team. The main concept of this graph is just to show that on every team, the team home runs are greater than the stadium home runs. From here I want to look into the difference between team home runs and stadium home runs. This can give us a little bit of an idea of what exactly we are working with, in terms of overall home runs and stadium home runs. 
+```{r}
+difference <- bat2025 |>
+  rename(Team = Tm, TeamHR = HR) |>
+  inner_join(
+    X2025HRdata |> rename(StadiumHR = HR),
+    by = "Team"
+  ) |>
+  mutate(
+    Difference = TeamHR - StadiumHR
+  )
+ggplot(difference, aes(x = reorder(Team, Difference), y = Difference)) +
+  geom_col(fill = "steelblue") +
+  coord_flip() +
+  labs(
+    title = "Difference Between Team HR and Stadium HR (2025)",
+    x = "Team",
+    y = "TeamHR − StadiumHR"
+  ) +
+  theme_minimal()
+```
+From here just note that teams we see on the top of scale might be hitting better away than at home. But, there could also be a difference dependent on how many home runs were scored. If there were more overall home runs scored, the difference might be greater as well. Just note that the New York Yankees led the leauge with 274 home runs during the 2025 season, so the difference being the highest can be because the TeamHR is the largest compared to the other teams. 
+```{r}
+compare <- bat2025 |>
+  rename(Team = Tm, TeamHR = HR) |>
+  inner_join(
+    X2025HRdata |> rename(StadiumHR = HR),
+    by = "Team"
+  )
+```
+
+```{r}
+cor(compare$TeamHR, compare$StadiumHR, use = "complete.obs")
+```
+The correlation is not too strong. There is a trend that oftentimes teams with more homeruns tend to play in stadiums that have more home runs, but there is not a strong enough relationship to draw a firm conclusion. 
+```{r}
+t.test(compare$TeamHR, compare$StadiumHR, paired = TRUE)
+```
+It is clear that the t-test would show that you cannot directly compare stadium homeruns to team homeruns. This occurs because a stadium only sees half the games a team plays.To address this, I next divide each team’s total home runs by two, assuming that roughly half of their home runs occur at home. This assumes that home and away home run rates are similar. While this assumption is not perfect, it allows me to work with the data available.
+```{r}
+t.test(compare$TeamHR / 2, compare$StadiumHR, paired = TRUE)
+```
+The mean difference of −6.3 indicates that, on average, the adjusted team home run total is about 6 home runs lower than the stadium total. This suggests that teams tend to hit more home runs at home than on the road. The confidence interval is entirely negative, reinforcing that team home runs (after dividing by two) are consistently lower than stadium home runs. The p‑value of 0.0314 indicates some statistical significance, though the effect is not extremely strong.
+
+Dividing team home runs by two is a rough scaling method intended to approximate the home/away split. Although not perfectly accurate, it helps reveal the trend that home stadiums generally see more home runs than away parks.
+```{r}
+compare |> mutate(Diff = TeamHR - StadiumHR)
+```
+Here, the difference represents the estimated number of away home runs.
+
+I will now visualize how stadium home runs and estimated away home runs combine to form total team home runs.
+
+```{r}
+ggplot(difference, aes(x = Team)) +
+  geom_col(aes(y = TeamHR - StadiumHR, fill = "Away HR"), position = "identity") +
+  geom_col(
+    aes(y = StadiumHR, fill = "Home HR"),
+    position = position_nudge(y = difference$TeamHR - difference$StadiumHR)
+  ) +
+  coord_flip() +
+  labs(
+    title = "Home + Away HR = Team HR",
+    x = "Team",
+    y = "Home Runs",
+    fill = "Category"
+  ) +
+  theme_minimal()
+```
+Just to wrap up I wanted to visually display how the TeamHR is made-up, showing the home vs away home run split. Just noting that for the most part we see a slight skew with favor in home HR with the exception of a couple teams in which they hit more homeruns away, such as Diamondbacks, Mariners, and the Yankees. 
+
+
+
